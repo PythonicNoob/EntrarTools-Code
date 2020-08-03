@@ -5,7 +5,7 @@ from selenium.common.exceptions import NoSuchElementException, WebDriverExceptio
 import sys
 
 sleep_time = 3
-
+#TODO: set viewport to low so that internet consumption is reducing meaning you can put more tabs
 try:
     with open("data.txt", "r") as file:
         dat = file.readlines()
