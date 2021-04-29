@@ -1,7 +1,7 @@
 from selenium.webdriver.common.keys import Keys
 from selenium import webdriver
 import time
-from selenium.common.exceptions import NoSuchElementException, WebDriverException, InvalidElementStateException
+from selenium.common.exceptions import NoSuchElementException, WebDriverException, InvalidElementStateException, TimeoutException
 import urllib.request
 import requests
 import os
@@ -16,8 +16,17 @@ import shutil
 import re
 import configparser
 import ctypes
-from git.repo import Repo
-from cryptography.fernet import Fernet
+from datetime import datetime
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from datamanager import DataManager
+import numpy as np
+import cv2
+from skimage.metrics import structural_similarity as struc_sim
+from PIL import Image
+
+gdrive = DataManager()
 
 VERSION = 1.3
 def isAdmin():
@@ -47,65 +56,6 @@ for rm_no in range(1,100):
 while os.path.isdir("tmp"):
     easygui.msgbox("Please remove the 'tmp' folder in the directory of this app and then click ok.")
 
-def update():
-    try:
-        ver = requests.get("https://raw.githubusercontent.com/ansh850/EntrarAttender/master/version.txt")
-        if float(ver.text) > VERSION:
-            easygui.msgbox("Updating the app please wait!")
-            if isAdmin() == False:
-                easygui.msgbox(
-                    "Please run this app as an administrator to update!. right click EntrarAttender.exe and run as administrator! This app cannot update without administrator permissions!")
-                sys.exit()
-            os.rename("EntrarAttender.exe", "EntrarAttender_old.exe")
-            try:
-                os.rename("chromedriver.exe", "chromedriver_old.exe")
-                os.rename("wkhtmltox", "wkhtmltox_old")
-            except Exception as e:
-                print("Could not rename old files due to:")
-                print(e)
-            Repo.clone_from("https://github.com/ansh850/EntrarAttender.git", "tmp")
-            source_files = []
-            to_copy_files = []
-            for x, y, z in os.walk("tmp"):
-                for filename in z:
-                    source_files.append(os.path.join(x,filename))
-            for fl in source_files:
-                if fl.split('\\')[1] != ".git":
-                    to_copy_files.append(fl)
-            for fle in to_copy_files:
-                try:
-                    if len(fle.split('\\')) <= 2:
-                        shutil.copy(fle, '\\'.join( fle.split("\\")[1:] ) )
-                    else:
-                        shutil.copytree('\\'.join(fle.split("\\")[:2]), fle.split('\\')[1])
-                except Exception as e:
-                    print("Exception occured while copying file", fle)
-                    print(e)
-
-
-            for rm_no in range(1,100):
-                try:
-                    shutil.rmtree("tmp")
-                except Exception as e:
-                    print("Could not remove tmp folder due to:")
-                    print(e)
-
-            try:
-                os.remove("EntrarAttender_old.exe")
-                os.remove("chromedriver_old.exe")
-                shutil.rmtree("wkhtmltox_old")
-            except Exception as e:
-                print("Exception occured while removing old files")
-                print(e)
-
-            os.system("EntrarAttender.exe")
-            sys.exit()
-
-    except Exception as e:
-        print("Could not update due to:")
-        print(e)
-
-update()
 
 #TODO: Clean Code
 #TODO: Starting Text
@@ -240,6 +190,7 @@ download_presentations_bool = getvalinrange("Download Presentations", 'easygui.b
 answer_random_questions = getvalinrange("Answer Questions", 'easygui.boolbox("Do you want the app to answer polling questions with random answers?")', [True, False], 'bool')
 use_default_presentation_name = getvalinrange("Use Default Name", 'easygui.boolbox("Do you want to type the name of presentations downloaded by this app or use default value? Say yes to use default values or no to type")', [True,False], 'bool')
 
+recordNotes = True
 
 #Wait here
 #input("Waiting here to stop?")
@@ -249,13 +200,6 @@ chromedriver_path = config["Entrar Attender"]["chromedriver path"]
 
 continue_PresDownloading = False
 continue_ButtonPressing = False
-
-heroku_domain = " https://trialrun01.herokuapp.com/"#"https://trialrun01.herokuapp.com/"
-encryption_key = b'aPOnGhpG378vPzKueY94migAlZT4jxEJIyoK3brNGYc='
-sending_auth_key = "aEHCIG2GQA5PzA4rvL2x5odWm34uKHtc"
-sending_auth_pass = "B8Dq0S3f3uSK7zZkTIimDmpqvJpGOduP"
-userdetails_post_address = "f6lsHfFHJB1Dj/"
-
 manual_check_time = 300 #In seconds
 last_time_manual_check = 0
 class_start_time = 0
@@ -263,6 +207,8 @@ download_preps = "downloaded_presentation.txt"
 existing_presentations = []
 existing_downloaded_presentations = []
 
+
+first_class =  "8:25"
 while 1 == 1:
     try:
         pdfkit_config = pdfkit.configuration(wkhtmltopdf=wkhtml_path)
@@ -314,18 +260,24 @@ def download_presentation_svg(main_url, output_file_name):
         if requests.get(this_url).status_code != 404:
 
             # pass
-            urllib.request.urlretrieve(this_url, "presentation_svg\\"+title+"\\"+output_file_name+"\\"+output_file_name+"_"+str(i)+".svg")
+            urllib.request.urlretrieve(this_url, "presentation_svg\\"+title+"\\"+datetime.now().strftime("%d-%m-%y") +"\\"+ output_file_name+"\\"+output_file_name+"_"+str(i)+".svg")
             image_links.append(this_url)
         else:
             print("Slide Count: ", i - 1)
             break
-    pdfkit.from_url(image_links, "presentation\\" + title + "\\" + output_file_name + "\\" + output_file_name + ".pdf", configuration=pdfkit_config)
 
+
+
+    file_name_q12 = "presentation\\" + title + "\\" + datetime.now().strftime("%d-%m-%y") + "\\" + output_file_name + ".pdf"
+    pdfkit.from_url(image_links, file_name_q12, configuration=pdfkit_config)
+
+    gdrive.upload_svg(file_name_q12)
 
 def download_presentations_function():
     global continue_PresDownloading
     print("Download presentation function called")
     while continue_PresDownloading:
+        time.sleep(60)
         print("Function in a loop of download presentation")
         try:
             image = driver.find_element_by_tag_name("image")
@@ -342,11 +294,11 @@ def download_presentations_function():
                             if r.status_code == 200:
                                 pres_filename = url_parts[7]
                                 try:
-                                    os.makedirs("presentation_downloaded\\" + title + "\\" + pres_filename)
+                                    os.makedirs("presentation_downloaded\\" + title + "\\" + datetime.now().strftime("%d-%m-%y"))
                                 except:
                                     pass
-                                urllib.request.urlretrieve(main_url + "." + extension, "presentation_downloaded\\" + title + "\\" + pres_filename+"\\"+pres_filename+"."+extension)
-
+                                urllib.request.urlretrieve(main_url + "." + extension, "presentation_downloaded\\" + title + "\\" + datetime.now().strftime("%d-%m-%y")+"\\"+pres_filename+"."+extension)
+                                gdrive.upload_down("presentation_downloaded\\" + title + "\\" + datetime.now().strftime("%d-%m-%y")+"\\"+pres_filename+"."+extension)
                                 existing_downloaded_presentations.append(presentation_name)
                                 save_existing_pres_d2()
         except Exception as e:
@@ -370,8 +322,8 @@ def download_presentations_function():
                     pres_filename = removeIllegalChars(pres_filename)
                     pres_filename = pres_filename[:64]
                 try:
-                    os.makedirs("presentation\\" + title+"\\"+ pres_filename)
-                    os.makedirs("presentation_svg\\" + title + "\\" + pres_filename)
+                    os.makedirs("presentation\\" + title + "\\" + datetime.now().strftime("%d-%m-%y"))
+                    os.makedirs("presentation_svg\\"+title+"\\"+datetime.now().strftime("%d-%m-%y") +"\\"+ pres_filename)
                 except:
                     pass
 
@@ -385,6 +337,7 @@ def download_presentations_function():
 def button_presser_function():
     global continue_ButtonPressing
     print("Button presser function called")
+    time.sleep(30)
     while continue_ButtonPressing:
         try:
             yes_button = driver.find_element_by_xpath('//button[normalize-space()="Yes"]')
@@ -421,43 +374,122 @@ def button_presser_function():
 def say_GoodMorning():
     #Say Good Morning If public chat is enabled
     time.sleep(5)
-    while time.time() - class_start_time < 600:
+    hour, minute = [int(a) for a in first_class.split(":")]
+    if ((time.time() - datetime.now().replace(hour=hour, minute=minute, second=0).timestamp()) % 3600) <= 600:
+        while time.time() - class_start_time < 600:
+            try:
+                driver.find_element_by_id("message-input").send_keys("Good Morning ma'am")
+                driver.find_element_by_id("message-input").send_keys(Keys.RETURN)
+                break
+            except Exception as e:
+                print("Could not type gm:")
+                print(e)
+
+def record_sharednotes():
+    f = driver.find_element_by_xpath("//iframe[name='ace_inner']")
+    driver.switch_to.frame(f)
+    sn = driver.find_element_by_tag_name("body")
+def record_ss():
+    global recordss
+    slide = 0
+    curr_img = None
+    if len(os.listdir("screeenshots")) > 0:
+        for file in os.listdir("screenshots"):
+            if "slide" in file and file.endswith(".jpg"):
+                num = int(file.strip("slide").strip(".jpg"))
+                if num > slide:
+                    slide = num
+                    dir = "screenshots\\"+file
+                    img = cv2.imread(dir)
+                    curr_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    print("curr_img set to ", slide)
+    print("recording ss")
+    while recordss:
         try:
-            driver.find_element_by_id("message-input").send_keys("Good Morning ma'am")
-            driver.find_element_by_id("message-input").send_keys(Keys.RETURN)
-            break
+            try:
+                ss = driver.find_element_by_id("screenshareVideo") #screenshareVideo
+            except NoSuchElementException:
+                ss = driver.find_element_by_class_name("presentationContainer--1wqUYG")
+            png = ss.screenshot_as_png # driver.get_screenshot_as_png()
+            nparr = np.frombuffer(png, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if curr_img is None:
+
+                slide = 1
+                cv2.imwrite(f"screenshots\\slide{slide}.jpg", img)
+                curr_img = img
+                time.sleep(45)
+            else:
+                try:
+                    curr_gray = cv2.cvtColor(curr_img, cv2.COLOR_BGR2GRAY)
+                    new_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                    img_similarity = struc_sim(curr_gray, new_gray, full=True)
+                    print("image similarity", img_similarity)
+                    if  img_similarity[0] < 0.96:
+                        slide += 1
+                        cv2.imwrite(f"screenshots\\slide{slide}.jpg", img)
+                        curr_img = img
+                    time.sleep(60)
+                except Exception as e:
+                    print("recording error",e)
+                    slide += 1
+                    cv2.imwrite(f"screenshots\\slide{slide}.jpg", img)
+                    curr_img = img
+                    time.sleep(60)
+
+        except NoSuchElementException:
+            pass
         except Exception as e:
-            print("Could not type gm:")
-            print(e)
+            print("recording error", e)
+    print("stopping...")
+    stop_recording_ss()
+    return
 
 def start_class():
     print("Class started")
     global title
     driver.get("https://entrar.in/classroom_creation_crm_new/s_display")
-    time.sleep(sleep_time)
-    time.sleep(sleep_time)
+    time.sleep(2*sleep_time)
     while 1 == 1:
         try:
-            join_button = driver.find_element_by_link_text("Join")
-            if join_button is not None:
+            join_button = driver.find_elements_by_link_text("Join")
+            if len(join_button) >= 1:
+                join_button = join_button[-1]
                 join_button.click()
-                break
+                org_handle = driver.current_window_handle
+                driver.switch_to.window(driver.window_handles[-1])
+                time.sleep(5)
+                if "ERR_INVALID_REDIRECT" not in driver.page_source and "notFound" not in driver.page_source:
+                    break
+                else:
+                    driver.switch_to.window(org_handle)
+                    time.sleep(5)
+                    driver.refresh()
+            else:
+                driver.get("https://entrar.in/classroom_creation_crm_new/s_display")
+                print("Join not found")
+                time.sleep(sleep_time)
         except NoSuchElementException:
             driver.get("https://entrar.in/classroom_creation_crm_new/s_display")
             print("Join not found")
             time.sleep(sleep_time)
     time.sleep(sleep_time)
-    driver.switch_to.window(driver.window_handles[-1])
+
+
     global class_start_time
     class_start_time = time.time()
     time.sleep(sleep_time)
-    time.sleep(20)
+    time.sleep(10)
     try:
         title = driver.find_element_by_class_name("presentationTitle--1LT79g").text
     except NoSuchElementException:
         title = easygui.enterbox("The Title of this class:")
         title = removeIllegalChars(title)
-
+    try:
+        # driver.find_element_by_xpath("//span[contains(text(), 'Listen')]")
+        WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//span[contains(text(), 'Listen')]"))).click()
+    except (NoSuchElementException, TimeoutException):
+        pass
     print("Staring name main")
     print("setting variables to true")
 
@@ -466,26 +498,70 @@ def start_class():
     #global continue_sayGm
     continue_PresDownloading = True
     continue_ButtonPressing = True
+
+    global presentation_downloader_daemon
+    global button_presser_daemon
+    global say_GM_daemon
+    global recordss
+    global recordNotes_daemon
+
     if __name__ == '__main__':
         if download_presentations_bool == True:
             print("Starting downloader daemon")
-            global presentation_downloader_daemon
+
             presentation_downloader_daemon = threading.Thread(target=download_presentations_function, daemon=True)
             presentation_downloader_daemon.start()
             print("Done")
+        else:
+            presentation_downloader_daemon = None
         if answer_random_questions == True:
             print("Starting Presentation downloader daemon")
-            global button_presser_daemon
+
             button_presser_daemon = threading.Thread(target=button_presser_function, daemon=True)
             button_presser_daemon.start()
             print("Done")
+        else:
+            button_presser_daemon = None
+
         if speakGoodMorning == True:
             print("Starting GM daemon")
-            global say_GM_daemon
-            say_GM_daemon = threading.Thread(target=say_GoodMorning(), daemon=True)
+
+            say_GM_daemon = threading.Thread(target=say_GoodMorning, daemon=True)
             say_GM_daemon.start()
             print("Done")
+        else:
+            say_GM_daemon = None
 
+        if recordNotes == True:
+            print("Recording Notes")
+            recordss = True
+            recordNotes_daemon = threading.Thread(target=record_ss, daemon=True)
+            recordNotes_daemon.start()
+            print("Done")
+        else:
+            recordNotes_daemon = None
+
+def stop_recording_ss():
+    print("CONVERT SS IMGS TO PDF")
+    notes_pics = []
+    dir = "screenshots"
+    new_dirs = [file_in_screenshot for file_in_screenshot in os.listdir(dir) if file_in_screenshot.endswith(".jpg")]
+    ss_files = sorted(new_dirs, key=lambda x: int(x.strip("slide").strip(".jpg")))
+    for file in ss_files:
+        notes_pics.append(Image.open(dir+"\\"+file))
+
+    save_dir = "notes\\{}\\{}".format(title, datetime.now().strftime("%d-%m-%y"))
+    filename = "{}\\{}.pdf".format(save_dir, datetime.now().strftime("%I%M"))
+    try:
+        os.makedirs(save_dir)
+    except FileExistsError:
+        pass
+    notes_pics[0].save(filename, save_all=True, append_images=notes_pics[1:])
+    gdrive.upload_notes(filename)
+
+    for file in os.listdir(dir):
+        os.remove(dir+"\\"+file)
+    # pdfkit.from_file(notes_pics, filename, configuration=pdfkit_config)
 
 def has_class_ended():
     #TODO: Function to check session ended forward to homepage
@@ -496,7 +572,7 @@ def has_class_ended():
                 button.click()
                 return True
     except Exception as e:
-        print("Exception while trying to find ecit button:")
+        print("Exception while trying to find exit button:")
         print(e)
     global last_time_manual_check
     if time.time() - class_start_time > 3600:
@@ -512,6 +588,7 @@ def end_class():
     global title
     global continue_ButtonPressing
     global continue_PresDownloading
+    global recordss
     #Stop All daemons
     # if download_presentations_bool == True:
     #     presentation_downloader_daemon.terminate()
@@ -519,18 +596,24 @@ def end_class():
     #     button_presser_daemon.terminate()
     continue_ButtonPressing = False
     continue_PresDownloading = False
+    recordss = False
     try:
         if presentation_downloader_daemon:
             presentation_downloader_daemon.join()
-        if button_presser_daemon:
-            button_presser_daemon.join()
         if say_GM_daemon:
             say_GM_daemon.join()
+        if recordNotes_daemon:
+            print("stoppping records daemon")
+            recordNotes_daemon.join()
+        if button_presser_daemon:
+            button_presser_daemon.join()
+
+
     except Exception as e:
         print("Error while joining threads")
         print(e)
-    title = '' #Change the title  to none so that it raises error in case no title is given
-    driver.get("https://entrar.in/classroom_creation_crm_new/s_display")
+
+    # driver.get("https://entrar.in/classroom_creation_crm_new/s_display")
     time.sleep(sleep_time)
     time.sleep(5)
 
@@ -547,35 +630,40 @@ while 1==1:
         chromedriver_path = easygui.fileopenbox(filetypes=[(".exe")])
 
 
-driver.get("https://www.entrar.in/login/login")
-time.sleep(sleep_time)
-driver.find_element_by_name("username").send_keys(username)
-driver.find_element_by_name("password").send_keys(password)
-driver.find_element_by_class_name("login100-form-btn").click()
-time.sleep(sleep_time)
 
-while driver.current_url == "https://entrar.in/login/authenticate/":
-    winsound.PlaySound("SystemQuestion", winsound.SND_ALIAS)
-    #easygui.msgbox("Invalid Username and / or Password. Please write correct username and password and try again")
-    username, password = easygui.multpasswordbox("Invalid Username and / or Password. Please write correct username and password and try again", fields=["Username", 'Password'])
+
+def login():
+    global username, password
+    driver.get("https://www.entrar.in/login/login")
+    time.sleep(sleep_time)
     driver.find_element_by_name("username").send_keys(username)
     driver.find_element_by_name("password").send_keys(password)
-    driver.find_element_by_class_name("login100-form-btn").click()
-    config["Entrar Attender"]["Username"] = username
-    config["Entrar Attender"]["Password"] = password
-    with open("config.ini","w") as file:
-        config.write(file)
+    driver.find_element_by_xpath("//button[contains(text(), 'Login')]").click()
     time.sleep(sleep_time)
-    #driver.quit()
-    #sys.exit()
+
+    while driver.current_url == "https://entrar.in/login/authenticate/":
+        winsound.PlaySound("SystemQuestion", winsound.SND_ALIAS)
+        #easygui.msgbox("Invalid Username and / or Password. Please write correct username and password and try again")
+        username, password = easygui.multpasswordbox("Invalid Username and / or Password. Please write correct username and password and try again", fields=["Username", 'Password'])
+        driver.find_element_by_name("username").send_keys(username)
+        driver.find_element_by_name("password").send_keys(password)
+        driver.find_element_by_class_name("login100-form-btn").click()
+        config["Entrar Attender"]["Username"] = username
+        config["Entrar Attender"]["Password"] = password
+        with open("config.ini","w") as file:
+            config.write(file)
+        time.sleep(sleep_time)
+
 
 driver.get("https://entrar.in/classroom_creation_crm_new/s_display")
 time.sleep(sleep_time)
+global title
 title = ''
 
 
 
 for class_number in range(0, no_of_classes):
+    login()
     time.sleep(3)
     print("Started class", class_number)
     start_class()
@@ -584,3 +672,6 @@ for class_number in range(0, no_of_classes):
         class_ended = has_class_ended()
     end_class()
     time.sleep(30)
+
+    title = ''  # Change the title  to none so that it raises error in case no title is given
+driver.close()
